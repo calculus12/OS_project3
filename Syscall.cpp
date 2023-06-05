@@ -5,6 +5,7 @@
 #include "Syscall.hpp"
 #include "System.hpp"
 #include "Run.hpp"
+#include "Error.hpp"
 #include <algorithm>
 
 using namespace Run;
@@ -389,5 +390,6 @@ system_call_type string_to_system_call_type(const std::string &str) {
         return system_call_type::Memory_release;
     }
 
-    throw "str does not match system call command";
+    fprintf(stderr, "Argument does not match system call command\n");
+    throw RunException("Argument does not match system call command\n");
 }
