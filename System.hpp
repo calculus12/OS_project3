@@ -72,8 +72,6 @@ struct PhysicalFrame {
      */
     std::vector<PageTableEntry**> linked_pages = std::vector<PageTableEntry**>();
 
-    //score에 따라 알고리즘에 의해 replace 될 메모리
-
     // 높을수록 최근에 접근된 메모리
     int ru_score;
     // 높을수록 최근에 삽입된 메모리
@@ -157,6 +155,8 @@ struct Status {
      * @param num_of_replace 교체되어야 할 페이지 수
      */
     void replace_page();
+
+    Process* get_process_by_pid(int pid) const;
 
     std::vector<Process*> get_child_processes(int parent_id) const;
 };

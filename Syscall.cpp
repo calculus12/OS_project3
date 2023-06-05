@@ -35,11 +35,15 @@ void fork_and_exec(std::string program_name) {
 
     // 부모 프로세스의 페이지 및 가상 메모리 CoW 형식으로 복사
     for (int address = 0; address < VIRTUAL_MEMORY_SIZE; address++) {
-        // 가상 메모리 복사
-        new_process->virtual_memory[address] = p->virtual_memory[address];
-        // 페이지 테이블 엔트리 복사
+
         const auto &parent_pe = p->page_table[address];
         if (parent_pe == nullptr) continue;
+        // 가상 메모리 복사
+        new_process->virtual_memory[address] = p->virtual_memory[address];
+
+        // 부모 프로세스의 페이지도 읽기 권한으로 변경
+        parent_pe->authority = 'R';
+        // 페이지 테이블 엔트리 복사됨
         new_process->page_table[address] = new PageTableEntry(parent_pe->physical_address, parent_pe->allocation_id,
                                                               'R');
 
@@ -138,7 +142,7 @@ void exit() {
         auto &pe = p->page_table[i];
 
         int target_frame_pid = p->pid;
-        if (pe->authority == 'R') target_frame_pid = p->ppid;
+        if (pe->authority == 'R') target_frame_pid = p->ppid == 0 ? 1 : p->ppid;
 
         if (pe->physical_address == -1) {
             // 스왑 영역에 있는 경우
@@ -160,7 +164,7 @@ void exit() {
         (*target_frame)->linked_pages.erase(remove_it);
 
         // 쓰기 권한까지 있을 떄 물리 메모리에서 제거
-        if (pe->authority == 'W') {
+        if (pe->authority == 'W' || p->pid == 1) {
             delete (*target_frame);
             (*target_frame) = nullptr;
         }
@@ -261,6 +265,9 @@ void memory_allocate(int allocation_size) {
     status.process_running = nullptr;
 }
 
+// todo 공유하고 있는 자식 프로세스에서 memory release가 일어나나면 다른 자식 프로세스도 W 권한을 부여함과 동시에 새로운 프레임을 만들어야 하나?
+// todo 즉, 부모 프로세스의 페이지에 대해 공유하고 있는 자식 프로세스가 2개 이상일 때 어떻게 처리해야 하나?
+// todo, 런어스 질문 https://ys.learnus.org/mod/ubboard/article.php?id=3107595&bwid=1141254 답변 기다리기
 void memory_release(int allocation_id) {
     Process *p = status.process_running;
 
@@ -277,7 +284,7 @@ void memory_release(int allocation_id) {
 
         PhysicalFrame** target_frame;
         int target_frame_pid = p->pid;
-        if (pe->authority == 'R') {
+        if (pe->authority == 'R' || p->pid != 1) {
             target_frame_pid = p->ppid;
         }
 
@@ -303,7 +310,7 @@ void memory_release(int allocation_id) {
         (*target_frame)->linked_pages.erase(remove_it);
 
         // 쓰기 권한까지 있을 때 물리 메모리에서 제거
-        if (pe->authority == 'W') {
+        if (pe->authority == 'W' || p->pid == 1) {
             delete (*target_frame);
             (*target_frame) = nullptr;
         }

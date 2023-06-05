@@ -179,11 +179,34 @@ std::vector<Process *> Status::get_child_processes(int parent_id) const {
     if (this->process_new != nullptr) {
         if (this->process_new->ppid == parent_id) res.push_back(this->process_new);
     }
-    if (this->process_new != nullptr) {
+    if (this->process_running != nullptr) {
         if (this->process_running->ppid == parent_id) res.push_back(this->process_running);
     }
 
     return res;
+}
+
+Process *Status::get_process_by_pid(int pid) const {
+    Process* p = nullptr;
+
+    for (const auto pr: this->process_ready) {
+        if (pr == nullptr) continue;
+        if (pr->pid == pid) return pr;
+    }
+
+    for (const auto pw: this->process_waiting) {
+        if (pw == nullptr) continue;
+        if (pw->pid == pid) return pw;
+    }
+
+    if (this->process_new != nullptr) {
+        if (this->process_new->pid == pid) return this->process_new;
+    }
+    if (this->process_running != nullptr) {
+        if (this->process_running->pid == pid) return this->process_running;
+    }
+
+    return p;
 }
 
 
