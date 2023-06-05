@@ -12,7 +12,10 @@ using namespace Run;
 void page_fault_handler(int page_id) {
     Process* p = status.process_running;
 
-    int virtual_address = *(std::find(p->virtual_memory.begin(), p->virtual_memory.end(), page_id));
+    int virtual_address = std::distance(p->virtual_memory.begin(),
+                                        std::find(p->virtual_memory.begin(),
+                                                  p->virtual_memory.end(),
+                                                  page_id));
     auto& target_pe = p->page_table[virtual_address];
     int target_frame_pid;
     if (target_pe->authority == 'R') {
@@ -61,7 +64,10 @@ void page_fault_handler(int page_id) {
 void protection_fault_handler(int page_id) {
     Process* p = status.process_running;
 
-    int virtual_address = *(std::find(p->virtual_memory.begin(), p->virtual_memory.end(), page_id));
+    int virtual_address = std::distance(p->virtual_memory.begin(),
+                                        std::find(p->virtual_memory.begin(),
+                                                  p->virtual_memory.end(),
+                                                  page_id));
     auto& target_pe = p->page_table[virtual_address];
 
     // 공유하고 있던 프레임을 찾아내서 역참조 제거

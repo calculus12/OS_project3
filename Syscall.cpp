@@ -330,6 +330,7 @@ void memory_release(int allocation_id) {
                 status.swap_space.push_back(new PhysicalFrame(child->pid,
                                                               child->virtual_memory[virtual_address],
                                                               status.top_fi_score++));
+                status.swap_space.back()->linked_pages.push_back(&pe);
                 pe->physical_address = -1;
                 pe->authority = 'W';
             }

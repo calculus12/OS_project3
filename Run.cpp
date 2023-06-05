@@ -143,9 +143,10 @@ void perform_cycle() {
             print_status();
             Process* p = status.process_running;
             int page_id_to_read = stoi(argument);
-            int virtual_address = *(std::find(p->virtual_memory.begin(),
-                                            p->virtual_memory.end(),
-                                            page_id_to_read));
+            int virtual_address = std::distance(p->virtual_memory.begin(),
+                                                std::find(p->virtual_memory.begin(),
+                                                          p->virtual_memory.end(),
+                                                          page_id_to_read));
             auto& target_page_table_entry = p->page_table[virtual_address];
 
             if (target_page_table_entry->physical_address == -1) {
