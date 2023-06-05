@@ -70,7 +70,7 @@ struct PhysicalFrame {
     /**
      * 프레임과 연결된 페이지
      */
-    std::vector<PageTableEntry*> linked_pages = std::vector<PageTableEntry*>();
+    std::vector<PageTableEntry**> linked_pages = std::vector<PageTableEntry**>();
 
     //score에 따라 알고리즘에 의해 replace 될 메모리
 
@@ -87,6 +87,8 @@ struct PhysicalFrame {
      * @param page_id
      */
     PhysicalFrame(int process_id, int page_id, int fi_score = 0, int fu_score = 0, int ru_score = 0);
+
+//    ~PhysicalFrame();
 };
 
 // todo: 메모리 관련 attribute 추가
@@ -125,7 +127,7 @@ struct Status {
     Process* process_new;
     Process* process_terminated;
     system_call_type syscall_type;
-    fault_type fault_type;
+    fault_type fault_handler_type;
     std::string syscall_arg;
     std::vector<PhysicalFrame*> physical_memory = std::vector<PhysicalFrame*>(PHYSICAL_MEMORY_SIZE, nullptr);
     std::vector<PhysicalFrame*> swap_space = std::vector<PhysicalFrame*>();
@@ -148,7 +150,7 @@ struct Status {
      * @param num 반환할 메모리 주소의 수
      * @return 메모리 주소의 std::vector
      */
-    std::vector<int> free_memory_addresses(int num);
+    std::vector<int> free_memory_addresses(int num) const;
 
     /**
      * 페이지 교체
@@ -156,7 +158,7 @@ struct Status {
      */
     void replace_page();
 
-    std::vector<Process*> get_child_processes(int parent_id);
+    std::vector<Process*> get_child_processes(int parent_id) const;
 };
 
 #endif //HW3_SYSTEM_HPP

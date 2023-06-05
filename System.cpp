@@ -3,6 +3,9 @@
 //
 
 #include "System.hpp"
+#include <cassert>
+#include <limits>
+#include <algorithm>
 
 page_replacement_policy str_to_policy(const std::string& policy_str) {
     if (policy_str == LRU_STRING) {
@@ -24,7 +27,17 @@ PhysicalFrame::PhysicalFrame(int process_id, int page_id, int fi_score, int fu_s
     this->fi_score = fi_score;
     this->fu_score = fu_score;
     this->ru_score = ru_score;
+
+    this->linked_pages.reserve(10);
 }
+
+//PhysicalFrame::~PhysicalFrame() {
+//    for (auto& linked_page: linked_pages) {
+//        if (linked_page == nullptr) continue;
+//        delete linked_page;
+//        linked_page = nullptr;
+//    }
+//}
 
 Process::Process(std::string name, int pid, int ppid, process_state state, int next_allocation_id, int next_page_id) {
 this->name = std::move(name);
@@ -55,7 +68,7 @@ int Status::free_memory_size() const {
     return remaining_physical_memory_size;
 }
 
-std::vector<int> Status::free_memory_addresses(int num) {
+std::vector<int> Status::free_memory_addresses(int num) const {
 
     if (this->free_memory_size() < num || num == 0) {
         return {};
@@ -137,18 +150,18 @@ void Status::replace_page() {
 
     // 연결된 페이지 테이블 갱신
     for (auto& p: this->swap_space.back()->linked_pages) {
-        if (p == nullptr) continue;
-        p->physical_address = -1;
+        if ((*p) == nullptr) continue;
+        (*p)->physical_address = -1;
     }
 
     // 페이지 역참조가 nullptr이면 제거
-    const auto& first_remove_it = std::remove(this->swap_space.back()->linked_pages.begin(),
+    const auto& first_remove_it = std::remove_if(this->swap_space.back()->linked_pages.begin(),
                                               this->swap_space.back()->linked_pages.end(),
-                                              nullptr);
+                                              [] (const auto& p) {return *p == nullptr;});
     this->swap_space.back()->linked_pages.erase(first_remove_it, this->swap_space.back()->linked_pages.end());
 }
 
-std::vector<Process *> Status::get_child_processes(int parent_id) {
+std::vector<Process *> Status::get_child_processes(int parent_id) const {
     auto res = std::vector<Process*>();
 
     for (const auto pr: this->process_ready) {

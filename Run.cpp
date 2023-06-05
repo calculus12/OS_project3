@@ -5,7 +5,6 @@
 #include "Run.hpp"
 #include "Syscall.hpp"
 #include "Fault.hpp"
-#include <string>
 #include <fstream>
 #include <sstream>
 #include <algorithm>
@@ -21,7 +20,7 @@ namespace Run {
 
 using namespace Run;
 
-const bool DEBUG_FLAG = false;
+const bool OUTPUT_STDOUT = false;
 
 std::vector<std::string> split(const std::string &str, char delim) {
     std::vector<std::string> result;
@@ -153,7 +152,7 @@ void perform_cycle() {
                 // 물리 메모리에 없다면 페이지 퐅트 핸들러 호출
                 status.command = FAULT_COMMAND_STRING;
                 status.mode = KERNEL_MODE_STRING;
-                status.fault_type = Page_fault;
+                status.fault_handler_type = Page_fault;
                 status.syscall_arg = argument;
             } else {
                 // ru(recently used), fu(frequently used) 점수 갱신
@@ -167,7 +166,8 @@ void perform_cycle() {
             print_status();
             Process* p = status.process_running;
             int page_id_to_write = stoi(argument);
-            int virtual_address = *(std::find(p->virtual_memory.begin(),
+            int virtual_address = std::distance(p->virtual_memory.begin(),
+                                                std::find(p->virtual_memory.begin(),
                                               p->virtual_memory.end(),
                                               page_id_to_write));
             auto& target_page_table_entry = p->page_table[virtual_address];
@@ -176,14 +176,14 @@ void perform_cycle() {
                 // 읽기 권한만 있을 때
                 status.command = FAULT_COMMAND_STRING;
                 status.mode = KERNEL_MODE_STRING;
-                status.fault_type = Protection_fault;
+                status.fault_handler_type = Protection_fault;
                 status.syscall_arg = argument;
             } else {
                 // 쓰기 권한이 있을 때
                 if (target_page_table_entry->physical_address == -1) {
                     status.command = FAULT_COMMAND_STRING;
                     status.mode = KERNEL_MODE_STRING;
-                    status.fault_type = Page_fault;
+                    status.fault_handler_type = Page_fault;
                     status.syscall_arg = argument;
                 } else {
                     auto& target_frame = status.physical_memory[target_page_table_entry->physical_address];
@@ -214,7 +214,7 @@ void run(const std::string &run_path, const std::string &replacement_policy, con
     // 페이지 교체 알고리즘 설정
     status.replacement_policy = str_to_policy(replacement_policy);
     Run::path = run_path;
-    result_file = DEBUG_FLAG ? stdout : fopen(result_filename.c_str(), "w");
+    result_file = OUTPUT_STDOUT ? stdout : fopen(result_filename.c_str(), "w");
 
     status.mode = KERNEL_MODE_STRING;
 

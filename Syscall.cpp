@@ -7,7 +7,6 @@
 #include "Run.hpp"
 #include <algorithm>
 
-
 using namespace Run;
 
 void sleep(int sleep_time) {
@@ -47,12 +46,13 @@ void fork_and_exec(std::string program_name) {
         if (parent_pe->physical_address != -1) {
             // 해당 프레임이 물리 메모리에 있는 경우
             const auto& frame = status.physical_memory[parent_pe->physical_address];
-            frame->linked_pages.push_back(std::ref(new_process->page_table[address]));
+            frame->linked_pages.push_back(&(new_process->page_table[address]));
         } else {
             // 스왑 영역에 있는 경우
             for (const auto& frame: status.swap_space) {
                 if (frame->process_id == p->pid && frame->page_id == p->virtual_memory[address]) {
-                    frame->linked_pages.push_back(std::ref(new_process->page_table[address]));
+                    frame->linked_pages.push_back(&(new_process->page_table[address]));
+                    break;
                 }
             }
         }
@@ -132,37 +132,43 @@ void exit() {
 
     // 해당 프로세스에 할당된 물리 메모리를 모두 해제
     for (int i = 0; i < VIRTUAL_MEMORY_SIZE; i++) {
-        auto &pe = p->page_table[i];
-        // 가상 메모리가 없거나 read 권한만 있는 경우 물리 메모리에서 삭제 X
         if (p->virtual_memory[i] == -1) continue;
-        if (pe->authority == 'R') {
-            delete pe;
-            pe = nullptr;
-            continue;
-        }
+        PhysicalFrame** target_frame;
+        auto &pe = p->page_table[i];
+
+        int target_frame_pid = p->pid;
+        if (pe->authority == 'R') target_frame_pid = p->ppid;
 
         if (pe->physical_address == -1) {
             // 스왑 영역에 있는 경우
             for (auto &frame_in_swap_space: status.swap_space) {
                 if (frame_in_swap_space == nullptr) continue;
-                if (frame_in_swap_space->process_id == p->pid && frame_in_swap_space->page_id == p->virtual_memory[i]) {
-                    delete frame_in_swap_space;
-                    frame_in_swap_space = nullptr;
+                if (frame_in_swap_space->process_id == target_frame_pid && frame_in_swap_space->page_id == p->virtual_memory[i]) {
+                    target_frame = &frame_in_swap_space;
                     break;
                 }
             }
         } else {
             // 물리 메모리에 있는 경우
-            auto &physical_frame = status.physical_memory[pe->physical_address];
-            delete physical_frame;
-            physical_frame = nullptr;
+            target_frame = &status.physical_memory[pe->physical_address];
+        }
+        // 역참조 제거
+        const auto remove_it = std::remove((*target_frame)->linked_pages.begin(),
+                                           (*target_frame)->linked_pages.end(),
+                                           &pe);
+        (*target_frame)->linked_pages.erase(remove_it);
+
+        // 쓰기 권한까지 있을 떄 물리 메모리에서 제거
+        if (pe->authority == 'W') {
+            delete (*target_frame);
+            (*target_frame) = nullptr;
         }
 
         delete pe;
         pe = nullptr;
     }
 
-    // 스왑 영역에서 nullptr이 된 프레임 제거
+    // 스왑 영역에서 nullptr이거 된 프레임 제거
     const auto swap_it = std::remove_if(status.swap_space.begin(), status.swap_space.end(),
                                         [](const auto &frame) { return frame == nullptr; });
     status.swap_space.erase(swap_it, status.swap_space.end());
@@ -213,9 +219,9 @@ void memory_allocate(int allocation_size) {
     }
 
     // 할당될 가상 메모리 공간 찾기
-    for (size_t i = 0; i < p->virtual_memory.size(); i++) {
+    for (int i = 0; i < VIRTUAL_MEMORY_SIZE; i++) {
         bool can_allocate = true;
-        for (int j = i; j < i + allocation_size; j++) {
+        for (size_t j = i; j < i + allocation_size; j++) {
             if (p->virtual_memory[j] != -1) {
                 can_allocate = false;
                 break;
@@ -241,7 +247,7 @@ void memory_allocate(int allocation_size) {
                                                             status.top_fi_score, 1, status.top_ru_score);
 
         // 나중에 역참조 정보를 갱신하기 위해 reference 로 전달
-        status.physical_memory[address]->linked_pages.push_back(std::ref(p->page_table[allocate_begin_index]));
+        status.physical_memory[address]->linked_pages.push_back(&(p->page_table[allocate_begin_index]));
         allocate_begin_index++;
     }
 
@@ -268,28 +274,37 @@ void memory_release(int allocation_id) {
         int released_page_id = p->virtual_memory[virtual_address];
         p->virtual_memory[virtual_address] = -1;
 
-        // 읽기 권한만 있는 경우 물리 메모리에서 해제 X
+        PhysicalFrame** target_frame;
+        int target_frame_pid = p->pid;
         if (pe->authority == 'R') {
-            delete pe;
-            pe = nullptr;
-            continue;
+            target_frame_pid = p->ppid;
         }
+
         // 물리 메모리에서 해제
         if (pe->physical_address == -1) {
             // 스왑 영역에 있는 경우
             for (auto &frame_in_swap_space: status.swap_space) {
                 if (frame_in_swap_space == nullptr) continue;
-                if (frame_in_swap_space->process_id == p->pid &&
+                if (frame_in_swap_space->process_id == target_frame_pid &&
                     frame_in_swap_space->page_id == released_page_id) {
-                    delete frame_in_swap_space;
-                    frame_in_swap_space = nullptr;
+                    target_frame = &frame_in_swap_space;
                     break;
                 }
             }
         } else {
-            auto &physical_frame = status.physical_memory[pe->physical_address];
-            delete physical_frame;
-            physical_frame = nullptr;
+            target_frame = &status.physical_memory[pe->physical_address];
+        }
+
+        // 역참조 제거
+        const auto remove_it = std::remove((*target_frame)->linked_pages.begin(),
+                                           (*target_frame)->linked_pages.end(),
+                                           &pe);
+        (*target_frame)->linked_pages.erase(remove_it);
+
+        // 쓰기 권한까지 있을 때 물리 메모리에서 제거
+        if (pe->authority == 'W') {
+            delete (*target_frame);
+            (*target_frame) = nullptr;
         }
 
         delete pe;
@@ -311,14 +326,11 @@ void memory_release(int allocation_id) {
             // 공유하고 있던 페이지를(read 권한만 있던) 부모 페이지로부터 복사 (write 권한을 부여 하고 물리 메모리에 생성)
             if (pe->allocation_id == allocation_id &&
                 pe->authority == 'R') {
-                // 물리 메모리에 공간이 없는 경우 페이지 교체 후 삽입
-                if (status.free_memory_size() <= 0) status.replace_page();
-
-                const auto allocation_address = status.free_memory_addresses(1).front();
-                status.physical_memory[allocation_address] = new PhysicalFrame(child->pid,
-                                                                               child->virtual_memory[virtual_address],
-                                                                               status.top_fi_score++);
-                pe->physical_address = allocation_address;
+                // 복사하고 스왑영역에 넣어 놓기
+                status.swap_space.push_back(new PhysicalFrame(child->pid,
+                                                              child->virtual_memory[virtual_address],
+                                                              status.top_fi_score++));
+                pe->physical_address = -1;
                 pe->authority = 'W';
             }
         }
