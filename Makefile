@@ -7,13 +7,13 @@ all: main
 main : $(OBJS)
 	$(CC) $(CXXFLAGS) -o project3 $(OBJS)
 
-System.o : System.hpp System.cpp Error.hpp
+System.o : System.hpp System.cpp
 	$(CC) $(CXXFLAGS) -c System.cpp
 
 Run.o : Run.cpp Run.hpp
 	$(CC) $(CXXFLAGS) -c Run.cpp
 
-Syscall.o : Syscall.cpp Syscall.hpp Error.hpp
+Syscall.o : Syscall.cpp Syscall.hpp
 	$(CC) $(CXXFLAGS) -c Syscall.cpp
 
 Fault.o : Fault.cpp Fault.hpp

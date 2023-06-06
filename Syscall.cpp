@@ -5,7 +5,6 @@
 #include "Syscall.hpp"
 #include "System.hpp"
 #include "Run.hpp"
-#include "Error.hpp"
 #include <algorithm>
 #include <unordered_set>
 
@@ -429,5 +428,5 @@ system_call_type string_to_system_call_type(const std::string &str) {
     }
 
     fprintf(stderr, "Argument does not match system call command\n");
-    throw RunException("Argument does not match system call command\n");
+    throw;
 }

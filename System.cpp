@@ -3,7 +3,6 @@
 //
 
 #include "System.hpp"
-#include "Error.hpp"
 #include <cassert>
 #include <limits>
 #include <algorithm>
@@ -20,7 +19,7 @@ page_replacement_policy str_to_policy(const std::string& policy_str) {
     }
 
     fprintf(stderr, "Not valid policy\n");
-    throw RunException("Not valid policy\n");
+    throw;
 }
 
 PhysicalFrame::PhysicalFrame(int process_id, int page_id, int fi_score, int fu_score, int ru_score) {
