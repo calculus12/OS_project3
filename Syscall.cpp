@@ -324,9 +324,9 @@ void memory_release(int allocation_id) {
             }
             delete (*target_frame);
             (*target_frame) = nullptr;
-            delete pe;
+            if (pe->authority != 'R') delete pe;
         }
-        pe = nullptr;
+        if (pe->authority != 'R') pe = nullptr;
     }
 
     // 스왑 영역에서 nullptr이 된 프레임 제거
@@ -356,12 +356,22 @@ void memory_release(int allocation_id) {
             }
         }
     }
-    // 해제하는 페이지가 부모 프로세스의 페이지가 아닌 경우 부모 프로세스의 해당 페이지의 권한을 W권한으로 바꿔준다.
+
+    auto* init_process = status.get_process_by_pid(1);
     if (p->pid != 1) {
-        auto* init_process = status.get_process_by_pid(1);
+        // 해제하는 페이지가 부모 프로세스의 페이지가 아닌 경우 부모 프로세스의 해당 페이지의 권한을 W권한으로 바꿔준다.
         for (auto& pe:init_process->page_table) {
             if (pe == nullptr) continue;
             if (pe->allocation_id == allocation_id) pe->authority = 'W';
+        }
+    } else {
+        // 해제하는 페이지가 부모 프로세스의 페이지인 경우 공유되는 페이지는 나중에 해제
+        for (auto& pe: init_process->page_table) {
+            if (pe == nullptr) continue;
+            if (pe->allocation_id == allocation_id) {
+                delete pe;
+                pe = nullptr;
+            }
         }
     }
 
