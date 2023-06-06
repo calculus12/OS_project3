@@ -44,23 +44,22 @@ void fork_and_exec(std::string program_name) {
         // 부모 프로세스의 페이지도 읽기 권한으로 변경
         parent_pe->authority = 'R';
         // 페이지 테이블 엔트리 복사됨
-        new_process->page_table[address] = new PageTableEntry(parent_pe->physical_address, parent_pe->allocation_id,
-                                                              'R');
+        new_process->page_table[address] = p->page_table[address];
 
-        // 역참조 추가
-        if (parent_pe->physical_address != -1) {
-            // 해당 프레임이 물리 메모리에 있는 경우
-            const auto& frame = status.physical_memory[parent_pe->physical_address];
-            frame->linked_pages.push_back(&(new_process->page_table[address]));
-        } else {
-            // 스왑 영역에 있는 경우
-            for (const auto& frame: status.swap_space) {
-                if (frame->process_id == p->pid && frame->page_id == p->virtual_memory[address]) {
-                    frame->linked_pages.push_back(&(new_process->page_table[address]));
-                    break;
-                }
-            }
-        }
+//        // 역참조 추가
+//        if (parent_pe->physical_address != -1) {
+//            // 해당 프레임이 물리 메모리에 있는 경우
+//            const auto& frame = status.physical_memory[parent_pe->physical_address];
+//            frame->linked_pages.push_back(&(new_process->page_table[address]));
+//        } else {
+//            // 스왑 영역에 있는 경우
+//            for (const auto& frame: status.swap_space) {
+//                if (frame->process_id == p->pid && frame->page_id == p->virtual_memory[address]) {
+//                    frame->linked_pages.push_back(&(new_process->page_table[address]));
+//                    break;
+//                }
+//            }
+//        }
     }
 
     status.process_num++;
@@ -158,18 +157,14 @@ void exit() {
             target_frame = &status.physical_memory[pe->physical_address];
         }
         // 역참조 제거
-        const auto remove_it = std::remove((*target_frame)->linked_pages.begin(),
-                                           (*target_frame)->linked_pages.end(),
-                                           &pe);
-        (*target_frame)->linked_pages.erase(remove_it);
+        (*target_frame)->linked_page = nullptr;
 
         // 쓰기 권한까지 있을 떄 물리 메모리에서 제거
         if (pe->authority == 'W' || p->pid == 1) {
             delete (*target_frame);
             (*target_frame) = nullptr;
+            delete pe;
         }
-
-        delete pe;
         pe = nullptr;
     }
 
@@ -252,7 +247,7 @@ void memory_allocate(int allocation_size) {
                                                             status.top_fi_score, 1, status.top_ru_score);
 
         // 나중에 역참조 정보를 갱신하기 위해 reference 로 전달
-        status.physical_memory[address]->linked_pages.push_back(&(p->page_table[allocate_begin_index]));
+        status.physical_memory[address]->linked_page=p->page_table[allocate_begin_index];
         allocate_begin_index++;
     }
 
@@ -284,7 +279,7 @@ void memory_release(int allocation_id) {
             PhysicalFrame **target_frame;
 
             int target_frame_pid = p->pid;
-            if (pe->authority == 'R' || p->pid != 1) {
+            if (pe->authority == 'R' && p->pid != 1) {
                 target_frame_pid = p->ppid;
             }
 
@@ -304,15 +299,12 @@ void memory_release(int allocation_id) {
             }
 
             // 역참조 제거
-            const auto remove_it = std::remove((*target_frame)->linked_pages.begin(),
-                                               (*target_frame)->linked_pages.end(),
-                                               &pe);
-            (*target_frame)->linked_pages.erase(remove_it);
+            (*target_frame)->linked_page = nullptr;
 
             delete (*target_frame);
             (*target_frame) = nullptr;
+            delete pe;
         }
-        delete pe;
         pe = nullptr;
     }
 
@@ -321,14 +313,7 @@ void memory_release(int allocation_id) {
                                         nullptr);
     status.swap_space.erase(swap_it, status.swap_space.end());
 
-    // 해제하는 페이지가 부모 프로세스의 페이지가 아닌 경우 부모 프로세스의 해당 페이지의 권한을 W권한으로 바꿔준다.
-    if (p->pid != 1) {
-        auto* init_process = status.get_process_by_pid(1);
-        for (auto& pe:init_process->page_table) {
-            if (pe == nullptr) continue;
-            if (pe->allocation_id == allocation_id) pe->authority = 'W';
-        }
-    }
+
 
     // 해제한 메모리를 공유하고 있는 자식 모두에 프로세스에 페이지 및 프레임 복사
     auto child_processes = status.get_child_processes(1);
@@ -342,13 +327,20 @@ void memory_release(int allocation_id) {
             if (pe->allocation_id == allocation_id &&
                 pe->authority == 'R') {
                 // 복사하고 스왑영역에 넣어 놓기
+                pe = new PageTableEntry(-1, pe->allocation_id);
                 status.swap_space.push_back(new PhysicalFrame(child->pid,
                                                               child->virtual_memory[virtual_address],
                                                               status.top_fi_score++));
-                status.swap_space.back()->linked_pages.push_back(&pe);
-                pe->physical_address = -1;
-                pe->authority = 'W';
+                status.swap_space.back()->linked_page = pe;
             }
+        }
+    }
+    // 해제하는 페이지가 부모 프로세스의 페이지가 아닌 경우 부모 프로세스의 해당 페이지의 권한을 W권한으로 바꿔준다.
+    if (p->pid != 1) {
+        auto* init_process = status.get_process_by_pid(1);
+        for (auto& pe:init_process->page_table) {
+            if (pe == nullptr) continue;
+            if (pe->allocation_id == allocation_id) pe->authority = 'W';
         }
     }
 

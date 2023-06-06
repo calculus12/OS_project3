@@ -30,7 +30,7 @@ PhysicalFrame::PhysicalFrame(int process_id, int page_id, int fi_score, int fu_s
     this->fu_score = fu_score;
     this->ru_score = ru_score;
 
-    this->linked_pages.reserve(10);
+    linked_page = nullptr;
 }
 
 //PhysicalFrame::~PhysicalFrame() {
@@ -151,16 +151,7 @@ void Status::replace_page() {
     this->physical_memory[replace_index] = nullptr;
 
     // 연결된 페이지 테이블 갱신
-    for (auto& p: this->swap_space.back()->linked_pages) {
-        if ((*p) == nullptr) continue;
-        (*p)->physical_address = -1;
-    }
-
-    // 페이지 역참조가 nullptr이면 제거
-    const auto& first_remove_it = std::remove_if(this->swap_space.back()->linked_pages.begin(),
-                                              this->swap_space.back()->linked_pages.end(),
-                                              [] (const auto& p) {return *p == nullptr;});
-    this->swap_space.back()->linked_pages.erase(first_remove_it, this->swap_space.back()->linked_pages.end());
+    this->swap_space.back()->linked_page->physical_address = -1;
 }
 
 std::vector<Process *> Status::get_child_processes(int parent_id) const {

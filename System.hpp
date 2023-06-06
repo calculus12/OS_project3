@@ -70,7 +70,7 @@ struct PhysicalFrame {
     /**
      * 프레임과 연결된 페이지
      */
-    std::vector<PageTableEntry**> linked_pages = std::vector<PageTableEntry**>();
+    PageTableEntry* linked_page;
 
     // 높을수록 최근에 접근된 메모리
     int ru_score;

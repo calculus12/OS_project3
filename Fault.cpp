@@ -42,10 +42,7 @@ void page_fault_handler(int page_id) {
             frame->fi_score = status.top_fi_score++;
             frame->fu_score++;
             frame->ru_score = status.top_ru_score++;
-            for (auto& linked_pe:frame->linked_pages) {
-                if((*linked_pe) == nullptr) continue;
-                (*linked_pe)->physical_address = physical_address_to_allocate;
-            }
+            frame->linked_page->physical_address = physical_address_to_allocate;
             break;
         }
     }
@@ -102,25 +99,23 @@ void protection_fault_handler(int page_id) {
 
     parent_page_table_entry->authority = 'W';
 
-    // todo 모든 자식 프로세스에 대해 W 권한을 주고 새로 프레임을 만드는 것이 맞는 것인가?
-    // 자식 프로세스들에 대한 역참조 제거 및 페이지 복사 (할당 x)
+    // 자식 프로세스들에 페이지 복사 (할당 x)
     for (auto& child: child_processes) {
         for (int i = 0; i < VIRTUAL_MEMORY_SIZE; i++) {
             if (child->virtual_memory[i] == page_id) {
                 auto& pe = child->page_table[i];
-                pe->authority = 'W';
-                pe->physical_address = -1;
+                pe = new PageTableEntry(-1, pe->allocation_id);
                 status.swap_space.push_back(new PhysicalFrame(child->pid, page_id));
-                status.swap_space.back()->linked_pages.push_back(&pe);
+                status.swap_space.back()->linked_page = pe;
                 break;
             }
         }
     }
-    const auto remove_it = std::remove_if(shared_frame->linked_pages.begin(),
-                                          shared_frame->linked_pages.end(),
-                                          [&](const auto& p)
-                                          {return *p != parent_page_table_entry;});
-    shared_frame->linked_pages.erase(remove_it);
+//    const auto remove_it = std::remove_if(shared_frame->linked_pages.begin(),
+//                                          shared_frame->linked_pages.end(),
+//                                          [&](const auto& p)
+//                                          {return *p != parent_page_table_entry;});
+//    shared_frame->linked_pages.erase(remove_it);
 
     if (shared_frame->process_id != p->pid) {
         // 자식 프로세스로 인해 fault가 발생한 경우 해당 프레임 새로 할당
@@ -129,9 +124,6 @@ void protection_fault_handler(int page_id) {
         }
         int physical_address_to_allocate = status.free_memory_addresses(1).front();
 
-//        const auto &copied_new_frame = status.physical_memory[physical_address_to_allocate]
-//                                               = new PhysicalFrame(p->pid, page_id,
-//                                                                   0, 0, 0);
         PhysicalFrame* copied_new_frame = nullptr;
         int iteration = -1;
         for (const auto& frame: status.swap_space) {
