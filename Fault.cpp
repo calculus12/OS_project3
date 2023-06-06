@@ -111,11 +111,6 @@ void protection_fault_handler(int page_id) {
             }
         }
     }
-//    const auto remove_it = std::remove_if(shared_frame->linked_pages.begin(),
-//                                          shared_frame->linked_pages.end(),
-//                                          [&](const auto& p)
-//                                          {return *p != parent_page_table_entry;});
-//    shared_frame->linked_pages.erase(remove_it);
 
     if (shared_frame->process_id != p->pid) {
         // 자식 프로세스로 인해 fault가 발생한 경우 해당 프레임 새로 할당

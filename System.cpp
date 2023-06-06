@@ -33,14 +33,6 @@ PhysicalFrame::PhysicalFrame(int process_id, int page_id, int fi_score, int fu_s
     linked_page = nullptr;
 }
 
-//PhysicalFrame::~PhysicalFrame() {
-//    for (auto& linked_page: linked_pages) {
-//        if (linked_page == nullptr) continue;
-//        delete linked_page;
-//        linked_page = nullptr;
-//    }
-//}
-
 Process::Process(std::string name, int pid, int ppid, process_state state, int next_allocation_id, int next_page_id) {
 this->name = std::move(name);
 this->pid = pid;

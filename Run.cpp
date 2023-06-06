@@ -20,7 +20,7 @@ namespace Run {
 
 using namespace Run;
 
-const bool OUTPUT_STDOUT = true;
+const bool OUTPUT_STDOUT = false;
 
 std::vector<std::string> split(const std::string &str, char delim) {
     std::vector<std::string> result;

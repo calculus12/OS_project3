@@ -45,21 +45,6 @@ void fork_and_exec(std::string program_name) {
         parent_pe->authority = 'R';
         // 페이지 테이블 엔트리 복사됨
         new_process->page_table[address] = p->page_table[address];
-
-//        // 역참조 추가
-//        if (parent_pe->physical_address != -1) {
-//            // 해당 프레임이 물리 메모리에 있는 경우
-//            const auto& frame = status.physical_memory[parent_pe->physical_address];
-//            frame->linked_pages.push_back(&(new_process->page_table[address]));
-//        } else {
-//            // 스왑 영역에 있는 경우
-//            for (const auto& frame: status.swap_space) {
-//                if (frame->process_id == p->pid && frame->page_id == p->virtual_memory[address]) {
-//                    frame->linked_pages.push_back(&(new_process->page_table[address]));
-//                    break;
-//                }
-//            }
-//        }
     }
 
     status.process_num++;
@@ -156,9 +141,6 @@ void exit() {
             // 물리 메모리에 있는 경우
             target_frame = &status.physical_memory[pe->physical_address];
         }
-        // 역참조 제거
-        (*target_frame)->linked_page = nullptr;
-
         // 쓰기 권한까지 있을 떄 물리 메모리에서 제거
         if (pe->authority == 'W' || p->pid == 1) {
             delete (*target_frame);
@@ -246,8 +228,7 @@ void memory_allocate(int allocation_size) {
         status.physical_memory[address] = new PhysicalFrame(p->pid, p->next_page_id++,
                                                             status.top_fi_score, 1, status.top_ru_score);
 
-        // 나중에 역참조 정보를 갱신하기 위해 reference 로 전달
-        status.physical_memory[address]->linked_page=p->page_table[allocate_begin_index];
+        status.physical_memory[address]->linked_page = p->page_table[allocate_begin_index];
         allocate_begin_index++;
     }
 
@@ -297,10 +278,6 @@ void memory_release(int allocation_id) {
             } else {
                 target_frame = &status.physical_memory[pe->physical_address];
             }
-
-            // 역참조 제거
-            (*target_frame)->linked_page = nullptr;
-
             delete (*target_frame);
             (*target_frame) = nullptr;
             delete pe;
