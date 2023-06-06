@@ -142,7 +142,7 @@ void exit() {
         auto &pe = p->page_table[i];
 
         int target_frame_pid = p->pid;
-        if (pe->authority == 'R') target_frame_pid = p->ppid == 0 ? 1 : p->ppid;
+        if (pe->authority == 'R' && p->pid != 1) target_frame_pid = p->ppid;
 
         if (pe->physical_address == -1) {
             // 스왑 영역에 있는 경우
@@ -265,12 +265,8 @@ void memory_allocate(int allocation_size) {
     status.process_running = nullptr;
 }
 
-// todo 공유하고 있는 자식 프로세스에서 memory release가 일어나나면 다른 자식 프로세스도 W 권한을 부여함과 동시에 새로운 프레임을 만들어야 하나?
-// todo 즉, 부모 프로세스의 페이지에 대해 공유하고 있는 자식 프로세스가 2개 이상일 때 어떻게 처리해야 하나?
-// todo, 런어스 질문 https://ys.learnus.org/mod/ubboard/article.php?id=3107595&bwid=1141254 답변 기다리기
 void memory_release(int allocation_id) {
     Process *p = status.process_running;
-
 
     // 가상 메모리 및 물리 메모리에서 제거
     for (int virtual_address = 0; virtual_address < VIRTUAL_MEMORY_SIZE; virtual_address++) {
@@ -282,39 +278,40 @@ void memory_release(int allocation_id) {
         int released_page_id = p->virtual_memory[virtual_address];
         p->virtual_memory[virtual_address] = -1;
 
-        PhysicalFrame** target_frame;
-        int target_frame_pid = p->pid;
-        if (pe->authority == 'R' || p->pid != 1) {
-            target_frame_pid = p->ppid;
-        }
 
-        // 물리 메모리에서 해제
-        if (pe->physical_address == -1) {
-            // 스왑 영역에 있는 경우
-            for (auto &frame_in_swap_space: status.swap_space) {
-                if (frame_in_swap_space == nullptr) continue;
-                if (frame_in_swap_space->process_id == target_frame_pid &&
-                    frame_in_swap_space->page_id == released_page_id) {
-                    target_frame = &frame_in_swap_space;
-                    break;
-                }
-            }
-        } else {
-            target_frame = &status.physical_memory[pe->physical_address];
-        }
-
-        // 역참조 제거
-        const auto remove_it = std::remove((*target_frame)->linked_pages.begin(),
-                                           (*target_frame)->linked_pages.end(),
-                                           &pe);
-        (*target_frame)->linked_pages.erase(remove_it);
-
-        // 쓰기 권한까지 있을 때 물리 메모리에서 제거
+        // 쓰기 권한까지 있을 때 혹은 init 프로세스일 때 물리 메모리에서 제거
         if (pe->authority == 'W' || p->pid == 1) {
+            PhysicalFrame **target_frame;
+
+            int target_frame_pid = p->pid;
+            if (pe->authority == 'R' || p->pid != 1) {
+                target_frame_pid = p->ppid;
+            }
+
+            // 메모리에서 해제할 프레임 찾기
+            if (pe->physical_address == -1) {
+                // 스왑 영역에 있는 경우
+                for (auto &frame_in_swap_space: status.swap_space) {
+                    if (frame_in_swap_space == nullptr) continue;
+                    if (frame_in_swap_space->process_id == target_frame_pid &&
+                        frame_in_swap_space->page_id == released_page_id) {
+                        target_frame = &frame_in_swap_space;
+                        break;
+                    }
+                }
+            } else {
+                target_frame = &status.physical_memory[pe->physical_address];
+            }
+
+            // 역참조 제거
+            const auto remove_it = std::remove((*target_frame)->linked_pages.begin(),
+                                               (*target_frame)->linked_pages.end(),
+                                               &pe);
+            (*target_frame)->linked_pages.erase(remove_it);
+
             delete (*target_frame);
             (*target_frame) = nullptr;
         }
-
         delete pe;
         pe = nullptr;
     }
@@ -324,14 +321,24 @@ void memory_release(int allocation_id) {
                                         nullptr);
     status.swap_space.erase(swap_it, status.swap_space.end());
 
-    // 해제한 메모리를 공유하고 있는 자식 프로세스에 페이지 및 프레임 복사
-    auto child_processes = status.get_child_processes(p->pid);
+    // 해제하는 페이지가 부모 프로세스의 페이지가 아닌 경우 부모 프로세스의 해당 페이지의 권한을 W권한으로 바꿔준다.
+    if (p->pid != 1) {
+        auto* init_process = status.get_process_by_pid(1);
+        for (auto& pe:init_process->page_table) {
+            if (pe == nullptr) continue;
+            if (pe->allocation_id == allocation_id) pe->authority = 'W';
+        }
+    }
+
+    // 해제한 메모리를 공유하고 있는 자식 모두에 프로세스에 페이지 및 프레임 복사
+    auto child_processes = status.get_child_processes(1);
 
     for (auto &child: child_processes) {
+        if (child->pid == p->pid) continue;
         for (int virtual_address = 0; virtual_address < VIRTUAL_MEMORY_SIZE; virtual_address++) {
             auto &pe = child->page_table[virtual_address];
             if (pe == nullptr) continue;
-            // 공유하고 있던 페이지를(read 권한만 있던) 부모 페이지로부터 복사 (write 권한을 부여 하고 물리 메모리에 생성)
+            // 공유하고 있던 페이지를(read 권한만 있던) 부모 페이지로부터 복사 (write 권한을 부여 하고 스왑 영역에 생성)
             if (pe->allocation_id == allocation_id &&
                 pe->authority == 'R') {
                 // 복사하고 스왑영역에 넣어 놓기
