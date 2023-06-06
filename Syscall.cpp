@@ -325,8 +325,9 @@ void memory_release(int allocation_id) {
             delete (*target_frame);
             (*target_frame) = nullptr;
             if (pe->authority != 'R') delete pe;
+            else continue;
         }
-        if (pe->authority != 'R') pe = nullptr;
+        pe = nullptr;
     }
 
     // 스왑 영역에서 nullptr이 된 프레임 제거
