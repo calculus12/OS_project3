@@ -7,6 +7,7 @@
 #include "Run.hpp"
 #include "Error.hpp"
 #include <algorithm>
+#include <unordered_set>
 
 using namespace Run;
 
@@ -119,6 +120,9 @@ void exit() {
                              [](Process *p) { return p->state == Ready; });
     status.process_waiting.erase(it, status.process_waiting.end());
 
+    // 공유하고 있는 page id를 기록 => 다른 프로세스들에서 공유하고 있던 페이지를 복사하기 위해
+    std::unordered_set<int> shared_page_ids;
+
     // 해당 프로세스에 할당된 물리 메모리를 모두 해제
     for (int i = 0; i < VIRTUAL_MEMORY_SIZE; i++) {
         if (p->virtual_memory[i] == -1) continue;
@@ -146,6 +150,8 @@ void exit() {
             delete (*target_frame);
             (*target_frame) = nullptr;
             delete pe;
+        } else {
+            shared_page_ids.insert(p->virtual_memory[i]);
         }
         pe = nullptr;
     }
@@ -154,6 +160,44 @@ void exit() {
     const auto swap_it = std::remove_if(status.swap_space.begin(), status.swap_space.end(),
                                         [](const auto &frame) { return frame == nullptr; });
     status.swap_space.erase(swap_it, status.swap_space.end());
+
+    // 해제한 메모리를 공유하고 있는 자식 모두에 프로세스에 페이지 및 프레임 복사
+    auto child_processes = status.get_child_processes(1);
+
+    for (auto &child: child_processes) {
+        if (child->pid == p->pid) continue;
+        for (int virtual_address = 0; virtual_address < VIRTUAL_MEMORY_SIZE; virtual_address++) {
+            if (child->virtual_memory[virtual_address] == -1) continue;
+            int current_page_id = child->virtual_memory[virtual_address];
+            auto &pe = child->page_table[virtual_address];
+            if (pe == nullptr) continue;
+            // 공유하고 있던 페이지를(read 권한만 있던) 부모 페이지로부터 복사 (write 권한을 부여 하고 스왑 영역에 생성)
+            if ((shared_page_ids.find(current_page_id) != shared_page_ids.end()) &&
+                pe->authority == 'R') {
+                // 복사하고 스왑영역에 넣어 놓기
+                pe = new PageTableEntry(-1, pe->allocation_id);
+                status.swap_space.push_back(new PhysicalFrame(child->pid,
+                                                              child->virtual_memory[virtual_address],
+                                                              status.top_fi_score++));
+                status.swap_space.back()->linked_page = pe;
+            }
+        }
+    }
+    // 해제하는 페이지가 부모 프로세스의 페이지가 아닌 경우 부모 프로세스의 해당 페이지의 권한을 W권한으로 바꿔준다.
+    if (p->pid != 1) {
+        auto* init_process = status.get_process_by_pid(1);
+
+        for (int i = 0; i < VIRTUAL_MEMORY_SIZE; i++) {
+            if (init_process->virtual_memory[i] == -1) continue;
+            int current_page_id = init_process->virtual_memory[i];
+            auto& pe = init_process->page_table[current_page_id];
+            if (pe == nullptr) continue;
+
+            if (shared_page_ids.find(current_page_id) != shared_page_ids.end()) {
+                pe->authority = 'W';
+            }
+        }
+    }
 
     status.process_running = nullptr;
     status.process_terminated = p;
